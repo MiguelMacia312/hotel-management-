@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Hoteles</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Encabezado -->
+    <header class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">🏨 Sistema de Gestión de Hoteles</span>
+        </div>
+    </header>
+
+    <!-- Contenedor Principal -->
+    <div class="container-fluid">
+        <div class="row h-100">
+            <!-- Sidebar -->
+            <aside class="col-md-3 sidebar p-4">
+                <nav class="nav flex-column">
+                    <a href="#" class="nav-link active" data-section="hoteles">Hoteles</a>
+                    <a href="#" class="nav-link" data-section="habitaciones">Habitaciones</a>
+                    <a href="#" class="nav-link" data-section="registros">Registros</a>
+                </nav>
+            </aside>
+
+            <!-- Contenido Principal -->
+            <main class="col-md-9 content p-4">
+                <!-- Sección Hoteles -->
+                <section id="hoteles" class="section-content">
+                    <h2>Gestión de Hoteles</h2>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Agregar Nuevo Hotel</h5>
+                            <form id="formHotel">
+                                <div class="mb-3">
+                                    <label for="nombreHotel" class="form-label">Nombre del Hotel</label>
+                                    <input type="text" class="form-control" id="nombreHotel" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="ubicacionHotel" class="form-label">Ubicación</label>
+                                    <input type="text" class="form-control" id="ubicacionHotel" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Guardar Hotel</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="listaHoteles"></div>
+                </section>
+
+                <!-- Sección Habitaciones -->
+                <section id="habitaciones" class="section-content d-none">
+                    <h2>Gestión de Habitaciones</h2>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Agregar Nueva Habitación</h5>
+                            <form id="formHabitacion">
+                                <div class="mb-3">
+                                    <label for="hotelSelect" class="form-label">Selecciona un Hotel</label>
+                                    <select class="form-select" id="hotelSelect" required>
+                                        <option value="">-- Selecciona un hotel --</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="codigoHab" class="form-label">Código de Habitación</label>
+                                    <input type="text" class="form-control" id="codigoHab" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="pisoHab" class="form-label">Piso</label>
+                                    <input type="number" class="form-control" id="pisoHab" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="capacidadHab" class="form-label">Capacidad</label>
+                                    <input type="number" class="form-control" id="capacidadHab" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="tipoHab" class="form-label">Tipo de Habitación</label>
+                                    <select class="form-select" id="tipoHab" required>
+                                        <option value="">-- Selecciona tipo --</option>
+                                        <option value="Estándar">Estándar</option>
+                                        <option value="Doble">Doble</option>
+                                        <option value="Suite">Suite</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Guardar Habitación</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="listaHabitaciones"></div>
+                </section>
+
+                <!-- Sección Registros -->
+                <section id="registros" class="section-content d-none">
+                    <h2>Registros</h2>
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Hotel</th>
+                                    <th>Código Habitación</th>
+                                    <th>Tipo</th>
+                                    <th>Piso</th>
+                                    <th>Capacidad</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaRegistros">
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white text-center py-3 mt-5">
+        <p>&copy; 2026 Sistema de Gestión de Hoteles. Todos los derechos reservados.</p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
