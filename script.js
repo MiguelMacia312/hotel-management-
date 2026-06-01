@@ -1,294 +1,414 @@
-// Variables globales
-let hoteles = JSON.parse(localStorage.getItem('hoteles')) || [];
-let habitaciones = JSON.parse(localStorage.getItem('habitaciones')) || [];
+/* =============================================
+   HotelManager Pro — app.js
+   localStorage: hotels[], rooms[]
+============================================= */
 
-// Elementos del DOM
-const formHotel = document.getElementById('formHotel');
-const formHabitacion = document.getElementById('formHabitacion');
-const listaHoteles = document.getElementById('listaHoteles');
-const listaHabitaciones = document.getElementById('listaHabitaciones');
-const tablaRegistros = document.getElementById('tablaRegistros');
-const hotelSelect = document.getElementById('hotelSelect');
-const navLinks = document.querySelectorAll('.sidebar .nav-link');
-const sections = document.querySelectorAll('.section-content');
+// ── Storage helpers ──────────────────────────
+const Storage = {
+  getHotels:  () => JSON.parse(localStorage.getItem('hmp_hotels')  || '[]'),
+  getRooms:   () => JSON.parse(localStorage.getItem('hmp_rooms')   || '[]'),
+  saveHotels: (d) => localStorage.setItem('hmp_hotels',  JSON.stringify(d)),
+  saveRooms:  (d) => localStorage.setItem('hmp_rooms',   JSON.stringify(d)),
+};
 
-// Eventos de navegación
-navLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-        e.preventDefault();
-        
-        // Remover clase active de todos los links
-        navLinks.forEach(l => l.classList.remove('active'));
-        link.classList.add('active');
-        
-        // Ocultar todas las secciones
-        sections.forEach(s => s.classList.add('d-none'));
-        
-        // Mostrar la sección seleccionada
-        const sectionId = link.getAttribute('data-section');
-        document.getElementById(sectionId).classList.remove('d-none');
-    });
+// ── UUID ─────────────────────────────────────
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// ── Stars helper ─────────────────────────────
+function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+// ── Toast ────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const el = document.getElementById('app-toast');
+  const msgEl = document.getElementById('toast-message');
+  el.classList.remove('toast-success', 'toast-error');
+  el.classList.add(type === 'success' ? 'toast-success' : 'toast-error');
+  msgEl.textContent = msg;
+  const t = new bootstrap.Toast(el, { delay: 2800 });
+  t.show();
+}
+
+// ── Global confirm callback ───────────────────
+let _confirmCb = null;
+
+function openConfirm(message, cb) {
+  document.getElementById('confirm-message').textContent = message;
+  _confirmCb = cb;
+  const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+  modal.show();
+}
+
+document.getElementById('btn-confirm-action').addEventListener('click', () => {
+  if (_confirmCb) { _confirmCb(); _confirmCb = null; }
+  bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
 });
 
-// CRUD Hoteles
-formHotel.addEventListener('submit', (e) => {
+// ── Navigation ────────────────────────────────
+document.querySelectorAll('.sidebar-link[data-section]').forEach(link => {
+  link.addEventListener('click', e => {
     e.preventDefault();
-    
-    const nombreHotel = document.getElementById('nombreHotel').value.trim();
-    const ubicacionHotel = document.getElementById('ubicacionHotel').value.trim();
-    
-    if (!nombreHotel || !ubicacionHotel) {
-        mostrarAlerta('Por favor completa todos los campos', 'danger');
-        return;
-    }
-    
-    const hotel = {
-        id: Date.now(),
-        nombre: nombreHotel,
-        ubicacion: ubicacionHotel
-    };
-    
-    hoteles.push(hotel);
-    guardarEnLocalStorage('hoteles', hoteles);
-    formHotel.reset();
-    mostrarAlerta('Hotel agregado exitosamente', 'success');
-    renderizarHoteles();
-    actualizarSelectHoteles();
+    const sec = link.dataset.section;
+    document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+    document.getElementById(`section-${sec}`).classList.add('active');
+    if (sec === 'dashboard') renderDashboard();
+    if (sec === 'rooms')     renderRooms();
+  });
 });
 
-function renderizarHoteles() {
-    listaHoteles.innerHTML = '';
-    
-    if (hoteles.length === 0) {
-        listaHoteles.innerHTML = '<div class="empty-message"><p>No hay hoteles registrados</p></div>';
-        return;
-    }
-    
-    hoteles.forEach(hotel => {
-        const hotelDiv = document.createElement('div');
-        hotelDiv.className = 'hotel-card';
-        hotelDiv.innerHTML = `
-            <div class="hotel-info">
-                <h5>${hotel.nombre}</h5>
-                <p><strong>Ubicación:</strong> ${hotel.ubicacion}</p>
-                <p><small class="text-muted">ID: ${hotel.id}</small></p>
-            </div>
-            <div class="hotel-actions">
-                <button class="btn btn-warning btn-sm" onclick="editarHotel(${hotel.id})">Editar</button>
-                <button class="btn btn-danger btn-sm" onclick="eliminarHotel(${hotel.id})">Eliminar</button>
-            </div>
-        `;
-        listaHoteles.appendChild(hotelDiv);
+// ── Header stats update ───────────────────────
+function updateHeaderStats() {
+  const hotels = Storage.getHotels();
+  const rooms  = Storage.getRooms();
+  document.getElementById('hdr-hotels').textContent = hotels.length;
+  document.getElementById('hdr-rooms').textContent  = rooms.length;
+}
+
+// ════════════════════════════════════════════
+//   HOTELS
+// ════════════════════════════════════════════
+
+function renderHotels() {
+  const hotels = Storage.getHotels();
+  const rooms  = Storage.getRooms();
+  const list   = document.getElementById('hotel-list');
+  const empty  = document.getElementById('hotel-empty');
+  list.innerHTML = '';
+
+  if (!hotels.length) {
+    empty.classList.remove('d-none');
+    updateHeaderStats();
+    return;
+  }
+  empty.classList.add('d-none');
+
+  hotels.forEach(hotel => {
+    const roomCount = rooms.filter(r => r.hotelId === hotel.id).length;
+    const col = document.createElement('div');
+    col.className = 'col-sm-6 col-xl-4';
+    col.innerHTML = `
+      <div class="hotel-card">
+        <div class="hotel-stars">${stars(parseInt(hotel.stars))}</div>
+        <div class="hotel-name">${escHtml(hotel.name)}</div>
+        <div class="hotel-meta">
+          ${hotel.city ? `<i class="bi bi-geo-alt-fill"></i> ${escHtml(hotel.city)}` : ''}
+          ${hotel.address ? ` &bull; ${escHtml(hotel.address)}` : ''}
+        </div>
+        <div class="hotel-room-count"><i class="bi bi-door-closed"></i> ${roomCount} habitación${roomCount !== 1 ? 'es' : ''}</div>
+        <div class="card-actions mt-3">
+          <button class="btn-edit" data-id="${hotel.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+          <button class="btn-delete" data-id="${hotel.id}"><i class="bi bi-trash-fill"></i> Eliminar</button>
+        </div>
+      </div>`;
+    list.appendChild(col);
+  });
+
+  // Events
+  list.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => openEditHotel(btn.dataset.id));
+  });
+  list.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hotel = Storage.getHotels().find(h => h.id === btn.dataset.id);
+      openConfirm(`¿Eliminar el hotel "${hotel.name}" y todas sus habitaciones?`, () => {
+        deleteHotel(btn.dataset.id);
+      });
     });
+  });
+
+  updateHeaderStats();
+  populateHotelSelects();
 }
 
-function editarHotel(id) {
-    const hotel = hoteles.find(h => h.id === id);
-    if (!hotel) return;
-    
-    const nuevoNombre = prompt('Nuevo nombre del hotel:', hotel.nombre);
-    if (nuevoNombre === null) return;
-    
-    const nuevaUbicacion = prompt('Nueva ubicación:', hotel.ubicacion);
-    if (nuevaUbicacion === null) return;
-    
-    hotel.nombre = nuevoNombre.trim();
-    hotel.ubicacion = nuevaUbicacion.trim();
-    
-    guardarEnLocalStorage('hoteles', hoteles);
-    mostrarAlerta('Hotel actualizado exitosamente', 'success');
-    renderizarHoteles();
-    actualizarSelectHoteles();
+function openEditHotel(id) {
+  const hotel = Storage.getHotels().find(h => h.id === id);
+  if (!hotel) return;
+  document.getElementById('hotel-id').value      = hotel.id;
+  document.getElementById('hotel-name').value    = hotel.name;
+  document.getElementById('hotel-city').value    = hotel.city    || '';
+  document.getElementById('hotel-address').value = hotel.address || '';
+  document.getElementById('hotel-stars').value   = hotel.stars   || '3';
+  document.getElementById('hotel-modal-title').textContent = 'Editar Hotel';
+  new bootstrap.Modal(document.getElementById('hotelModal')).show();
 }
 
-function eliminarHotel(id) {
-    if (!confirm('¿Estás seguro de eliminar este hotel?')) return;
-    
-    hoteles = hoteles.filter(h => h.id !== id);
-    habitaciones = habitaciones.filter(hab => hab.hotelId !== id);
-    
-    guardarEnLocalStorage('hoteles', hoteles);
-    guardarEnLocalStorage('habitaciones', habitaciones);
-    mostrarAlerta('Hotel eliminado exitosamente', 'success');
-    renderizarHoteles();
-    actualizarSelectHoteles();
-    renderizarRegistros();
+function deleteHotel(id) {
+  const hotels = Storage.getHotels().filter(h => h.id !== id);
+  const rooms  = Storage.getRooms().filter(r => r.hotelId !== id);
+  Storage.saveHotels(hotels);
+  Storage.saveRooms(rooms);
+  renderHotels();
+  renderRooms();
+  showToast('Hotel eliminado correctamente');
 }
 
-// CRUD Habitaciones
-formHabitacion.addEventListener('submit', (e) => {
-    e.preventDefault();
-    
-    const hotelId = parseInt(hotelSelect.value);
-    const codigoHab = document.getElementById('codigoHab').value.trim();
-    const pisoHab = parseInt(document.getElementById('pisoHab').value);
-    const capacidadHab = parseInt(document.getElementById('capacidadHab').value);
-    const tipoHab = document.getElementById('tipoHab').value;
-    
-    if (!hotelId || !codigoHab || !pisoHab || !capacidadHab || !tipoHab) {
-        mostrarAlerta('Por favor completa todos los campos', 'danger');
-        return;
-    }
-    
-    // Validar que no exista una habitación con el mismo código en el mismo hotel
-    if (habitaciones.some(h => h.hotelId === hotelId && h.codigo === codigoHab)) {
-        mostrarAlerta('Ya existe una habitación con este código en el hotel', 'warning');
-        return;
-    }
-    
-    const habitacion = {
-        id: Date.now(),
-        hotelId: hotelId,
-        codigo: codigoHab,
-        piso: pisoHab,
-        capacidad: capacidadHab,
-        tipo: tipoHab
-    };
-    
-    habitaciones.push(habitacion);
-    guardarEnLocalStorage('habitaciones', habitaciones);
-    formHabitacion.reset();
-    mostrarAlerta('Habitación agregada exitosamente', 'success');
-    renderizarHabitaciones();
-    renderizarRegistros();
+document.getElementById('btn-save-hotel').addEventListener('click', () => {
+  const name    = document.getElementById('hotel-name').value.trim();
+  const city    = document.getElementById('hotel-city').value.trim();
+  const address = document.getElementById('hotel-address').value.trim();
+  const starsVal= document.getElementById('hotel-stars').value;
+  const id      = document.getElementById('hotel-id').value;
+
+  if (!name) { showToast('El nombre del hotel es obligatorio', 'error'); return; }
+
+  const hotels = Storage.getHotels();
+  if (id) {
+    const idx = hotels.findIndex(h => h.id === id);
+    if (idx !== -1) hotels[idx] = { ...hotels[idx], name, city, address, stars: starsVal };
+  } else {
+    hotels.push({ id: uid(), name, city, address, stars: starsVal });
+  }
+
+  Storage.saveHotels(hotels);
+  bootstrap.Modal.getInstance(document.getElementById('hotelModal')).hide();
+  resetHotelForm();
+  renderHotels();
+  showToast(id ? 'Hotel actualizado' : 'Hotel creado correctamente');
 });
 
-function renderizarHabitaciones() {
-    listaHabitaciones.innerHTML = '';
-    
-    if (habitaciones.length === 0) {
-        listaHabitaciones.innerHTML = '<div class="empty-message"><p>No hay habitaciones registradas</p></div>';
-        return;
-    }
-    
-    habitaciones.forEach(habitacion => {
-        const hotel = hoteles.find(h => h.id === habitacion.hotelId);
-        const nombreHotel = hotel ? hotel.nombre : 'Hotel desconocido';
-        
-        const habitacionDiv = document.createElement('div');
-        habitacionDiv.className = 'habitacion-card';
-        habitacionDiv.innerHTML = `
-            <div class="habitacion-info">
-                <h5>Habitación ${habitacion.codigo}</h5>
-                <p><strong>Hotel:</strong> ${nombreHotel}</p>
-                <p><strong>Tipo:</strong> ${habitacion.tipo} | <strong>Piso:</strong> ${habitacion.piso} | <strong>Capacidad:</strong> ${habitacion.capacidad} personas</p>
-                <p><small class="text-muted">ID: ${habitacion.id}</small></p>
-            </div>
-            <div class="habitacion-actions">
-                <button class="btn btn-warning btn-sm" onclick="editarHabitacion(${habitacion.id})">Editar</button>
-                <button class="btn btn-danger btn-sm" onclick="eliminarHabitacion(${habitacion.id})">Eliminar</button>
-            </div>
-        `;
-        listaHabitaciones.appendChild(habitacionDiv);
+document.getElementById('hotelModal').addEventListener('hidden.bs.modal', resetHotelForm);
+function resetHotelForm() {
+  document.getElementById('hotel-id').value      = '';
+  document.getElementById('hotel-name').value    = '';
+  document.getElementById('hotel-city').value    = '';
+  document.getElementById('hotel-address').value = '';
+  document.getElementById('hotel-stars').value   = '3';
+  document.getElementById('hotel-modal-title').textContent = 'Nuevo Hotel';
+}
+
+// ════════════════════════════════════════════
+//   ROOMS
+// ════════════════════════════════════════════
+
+function renderRooms() {
+  const rooms   = Storage.getRooms();
+  const hotels  = Storage.getHotels();
+  const list    = document.getElementById('room-list');
+  const empty   = document.getElementById('room-empty');
+
+  const filterHotel = document.getElementById('filter-hotel').value;
+  const filterType  = document.getElementById('filter-type').value;
+
+  let filtered = rooms;
+  if (filterHotel) filtered = filtered.filter(r => r.hotelId === filterHotel);
+  if (filterType)  filtered = filtered.filter(r => r.type    === filterType);
+
+  list.innerHTML = '';
+
+  if (!filtered.length) {
+    empty.classList.remove('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+
+  filtered.forEach(room => {
+    const hotel = hotels.find(h => h.id === room.hotelId);
+    const col = document.createElement('div');
+    col.className = 'col-sm-6 col-lg-4';
+    col.innerHTML = `
+      <div class="room-card">
+        <span class="room-type-badge type-${room.type}">${typeLabel(room.type)}</span>
+        <div class="room-code">${escHtml(room.code)}</div>
+        <div class="room-meta">
+          <i class="bi bi-layers-fill"></i> Piso ${escHtml(String(room.floor))} &bull;
+          <i class="bi bi-people-fill"></i> Cap. ${escHtml(String(room.capacity))}
+        </div>
+        <div class="room-hotel-tag">
+          <i class="bi bi-building"></i> ${hotel ? escHtml(hotel.name) : '<em>Hotel eliminado</em>'}
+        </div>
+        <div class="card-actions">
+          <button class="btn-edit" data-id="${room.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+          <button class="btn-delete" data-id="${room.id}"><i class="bi bi-trash-fill"></i> Eliminar</button>
+        </div>
+      </div>`;
+    list.appendChild(col);
+  });
+
+  list.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => openEditRoom(btn.dataset.id));
+  });
+  list.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const room = Storage.getRooms().find(r => r.id === btn.dataset.id);
+      openConfirm(`¿Eliminar la habitación "${room.code}"?`, () => deleteRoom(btn.dataset.id));
     });
+  });
 }
 
-function editarHabitacion(id) {
-    const habitacion = habitaciones.find(h => h.id === id);
-    if (!habitacion) return;
-    
-    const nuevoTipo = prompt('Nuevo tipo de habitación (Estándar/Doble/Suite):', habitacion.tipo);
-    if (nuevoTipo === null) return;
-    
-    if (!['Estándar', 'Doble', 'Suite'].includes(nuevoTipo)) {
-        mostrarAlerta('Tipo de habitación inválido', 'danger');
-        return;
-    }
-    
-    const nuevaCapacidad = prompt('Nueva capacidad:', habitacion.capacidad);
-    if (nuevaCapacidad === null) return;
-    
-    habitacion.tipo = nuevoTipo;
-    habitacion.capacidad = parseInt(nuevaCapacidad);
-    
-    guardarEnLocalStorage('habitaciones', habitaciones);
-    mostrarAlerta('Habitación actualizada exitosamente', 'success');
-    renderizarHabitaciones();
-    renderizarRegistros();
+function typeLabel(t) {
+  return { estandar: 'Estándar', doble: 'Doble', suite: 'Suite' }[t] || t;
 }
 
-function eliminarHabitacion(id) {
-    if (!confirm('¿Estás seguro de eliminar esta habitación?')) return;
-    
-    habitaciones = habitaciones.filter(h => h.id !== id);
-    guardarEnLocalStorage('habitaciones', habitaciones);
-    mostrarAlerta('Habitación eliminada exitosamente', 'success');
-    renderizarHabitaciones();
-    renderizarRegistros();
+function openEditRoom(id) {
+  const room = Storage.getRooms().find(r => r.id === id);
+  if (!room) return;
+  document.getElementById('room-id').value       = room.id;
+  document.getElementById('room-hotel').value    = room.hotelId;
+  document.getElementById('room-code').value     = room.code;
+  document.getElementById('room-floor').value    = room.floor;
+  document.getElementById('room-type').value     = room.type;
+  document.getElementById('room-capacity').value = room.capacity;
+  document.getElementById('room-modal-title').textContent = 'Editar Habitación';
+  new bootstrap.Modal(document.getElementById('roomModal')).show();
 }
 
-// Actualizar select de hoteles
-function actualizarSelectHoteles() {
-    const currentValue = hotelSelect.value;
-    hotelSelect.innerHTML = '<option value="">-- Selecciona un hotel --</option>';
-    
-    hoteles.forEach(hotel => {
-        const option = document.createElement('option');
-        option.value = hotel.id;
-        option.textContent = hotel.nombre;
-        hotelSelect.appendChild(option);
-    });
-    
-    if (currentValue) {
-        hotelSelect.value = currentValue;
-    }
+function deleteRoom(id) {
+  const rooms = Storage.getRooms().filter(r => r.id !== id);
+  Storage.saveRooms(rooms);
+  renderRooms();
+  renderHotels(); // update room counts
+  showToast('Habitación eliminada');
 }
 
-// Renderizar tabla de registros
-function renderizarRegistros() {
-    tablaRegistros.innerHTML = '';
-    
-    if (habitaciones.length === 0) {
-        tablaRegistros.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay registros</td></tr>';
-        return;
-    }
-    
-    habitaciones.forEach(habitacion => {
-        const hotel = hoteles.find(h => h.id === habitacion.hotelId);
-        const nombreHotel = hotel ? hotel.nombre : 'Hotel desconocido';
-        
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${nombreHotel}</td>
-            <td>${habitacion.codigo}</td>
-            <td>${habitacion.tipo}</td>
-            <td>${habitacion.piso}</td>
-            <td>${habitacion.capacidad}</td>
-        `;
-        tablaRegistros.appendChild(row);
-    });
+document.getElementById('btn-save-room').addEventListener('click', () => {
+  const hotelId  = document.getElementById('room-hotel').value;
+  const code     = document.getElementById('room-code').value.trim();
+  const floor    = document.getElementById('room-floor').value.trim();
+  const type     = document.getElementById('room-type').value;
+  const capacity = document.getElementById('room-capacity').value.trim();
+  const id       = document.getElementById('room-id').value;
+
+  if (!hotelId)  { showToast('Selecciona un hotel',          'error'); return; }
+  if (!code)     { showToast('El código es obligatorio',      'error'); return; }
+  if (floor === '')  { showToast('El piso es obligatorio',    'error'); return; }
+  if (!capacity) { showToast('La capacidad es obligatoria',  'error'); return; }
+
+  const rooms = Storage.getRooms();
+
+  // Unique code per hotel
+  const duplicate = rooms.find(r => r.hotelId === hotelId && r.code === code && r.id !== id);
+  if (duplicate) { showToast('Ya existe una habitación con ese código en este hotel', 'error'); return; }
+
+  if (id) {
+    const idx = rooms.findIndex(r => r.id === id);
+    if (idx !== -1) rooms[idx] = { ...rooms[idx], hotelId, code, floor, type, capacity };
+  } else {
+    rooms.push({ id: uid(), hotelId, code, floor, type, capacity });
+  }
+
+  Storage.saveRooms(rooms);
+  bootstrap.Modal.getInstance(document.getElementById('roomModal')).hide();
+  resetRoomForm();
+  renderRooms();
+  renderHotels();
+  showToast(id ? 'Habitación actualizada' : 'Habitación registrada');
+});
+
+document.getElementById('roomModal').addEventListener('hidden.bs.modal', resetRoomForm);
+function resetRoomForm() {
+  document.getElementById('room-id').value       = '';
+  document.getElementById('room-hotel').value    = '';
+  document.getElementById('room-code').value     = '';
+  document.getElementById('room-floor').value    = '';
+  document.getElementById('room-type').value     = 'estandar';
+  document.getElementById('room-capacity').value = '';
+  document.getElementById('room-modal-title').textContent = 'Nueva Habitación';
 }
 
-// Funciones auxiliares
-function guardarEnLocalStorage(clave, datos) {
-    localStorage.setItem(clave, JSON.stringify(datos));
+// Filters
+document.getElementById('filter-hotel').addEventListener('change', renderRooms);
+document.getElementById('filter-type').addEventListener('change',  renderRooms);
+
+// ── Populate hotel selects ────────────────────
+function populateHotelSelects() {
+  const hotels = Storage.getHotels();
+  const opts   = hotels.map(h => `<option value="${h.id}">${escHtml(h.name)}</option>`).join('');
+
+  ['room-hotel', 'filter-hotel'].forEach(id => {
+    const el = document.getElementById(id);
+    const prev = el.value;
+    el.innerHTML = id === 'filter-hotel'
+      ? `<option value="">Todos los hoteles</option>${opts}`
+      : `<option value="">Selecciona un hotel</option>${opts}`;
+    el.value = prev;
+  });
 }
 
-function mostrarAlerta(mensaje, tipo = 'info') {
-    const alerta = document.createElement('div');
-    alerta.className = `alert alert-${tipo} alert-dismissible fade show`;
-    alerta.setAttribute('role', 'alert');
-    alerta.innerHTML = `
-        ${mensaje}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    
-    const mainContent = document.querySelector('.content');
-    mainContent.insertBefore(alerta, mainContent.firstChild);
-    
-    // Remover alerta después de 5 segundos
-    setTimeout(() => {
-        alerta.remove();
-    }, 5000);
+// ════════════════════════════════════════════
+//   DASHBOARD
+// ════════════════════════════════════════════
+
+function renderDashboard() {
+  const hotels = Storage.getHotels();
+  const rooms  = Storage.getRooms();
+
+  const suites   = rooms.filter(r => r.type === 'suite').length;
+  const capacity = rooms.reduce((a, r) => a + parseInt(r.capacity || 0), 0);
+
+  document.getElementById('kpi-hotels').textContent   = hotels.length;
+  document.getElementById('kpi-rooms').textContent    = rooms.length;
+  document.getElementById('kpi-suites').textContent   = suites;
+  document.getElementById('kpi-capacity').textContent = capacity;
+
+  const bd = document.getElementById('dashboard-breakdown');
+  bd.innerHTML = '';
+
+  if (!hotels.length) {
+    bd.innerHTML = `<div class="col-12"><p class="text-center" style="color:var(--txt-secondary)">No hay hoteles para mostrar.</p></div>`;
+    return;
+  }
+
+  hotels.forEach(hotel => {
+    const hr = rooms.filter(r => r.hotelId === hotel.id);
+    const count = (t) => hr.filter(r => r.type === t).length;
+    const total = hr.length || 1;
+
+    const col = document.createElement('div');
+    col.className = 'col-sm-6 col-xl-4';
+    col.innerHTML = `
+      <div class="breakdown-card">
+        <div class="breakdown-hotel-name"><i class="bi bi-building" style="color:var(--gold)"></i> ${escHtml(hotel.name)}</div>
+        <div class="type-bar">
+          <span class="type-bar-label">Estándar</span>
+          <div class="type-bar-track"><div class="type-bar-fill fill-estandar" style="width:${pct(count('estandar'),total)}%"></div></div>
+          <span class="type-bar-count">${count('estandar')}</span>
+        </div>
+        <div class="type-bar">
+          <span class="type-bar-label">Doble</span>
+          <div class="type-bar-track"><div class="type-bar-fill fill-doble" style="width:${pct(count('doble'),total)}%"></div></div>
+          <span class="type-bar-count">${count('doble')}</span>
+        </div>
+        <div class="type-bar">
+          <span class="type-bar-label">Suite</span>
+          <div class="type-bar-track"><div class="type-bar-fill fill-suite" style="width:${pct(count('suite'),total)}%"></div></div>
+          <span class="type-bar-count">${count('suite')}</span>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--txt-secondary)">
+          Total: <strong style="color:var(--txt-primary)">${hr.length}</strong> habitación${hr.length !== 1 ? 'es' : ''}
+        </div>
+      </div>`;
+    bd.appendChild(col);
+  });
 }
 
-// Inicializar página
-function inicializar() {
-    renderizarHoteles();
-    renderizarHabitaciones();
-    renderizarRegistros();
-    actualizarSelectHoteles();
+function pct(n, total) { return Math.round((n / total) * 100); }
+
+// ── Clear all data ────────────────────────────
+document.getElementById('btn-clear-all').addEventListener('click', () => {
+  openConfirm('¿Eliminar TODOS los hoteles y habitaciones? Esta acción no se puede deshacer.', () => {
+    Storage.saveHotels([]);
+    Storage.saveRooms([]);
+    renderHotels();
+    renderRooms();
+    showToast('Todos los datos han sido eliminados');
+  });
+});
+
+// ── XSS helper ────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-// Llamar a inicializar cuando carga la página
-window.addEventListener('DOMContentLoaded', inicializar);
+// ── Init ──────────────────────────────────────
+(function init() {
+  populateHotelSelects();
+  renderHotels();
+  renderRooms();
+})();
